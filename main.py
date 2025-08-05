@@ -70,14 +70,13 @@ def main():
     fogpassfilter_loss = FogPassFilterLoss(margin=0.1)
 
     # Data loaders
+    cwsf_dataset = PairedCityscapes(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size,img_size=args.img_size)
     cwsf_loader = data.DataLoader(
-        PairedCityscapes(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size,
-                         img_size=args.img_size),
-        batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True
+        cwsf_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=cwsf_dataset.collate_fn
     )
+    rf_dataset = FoggyZurich(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size, img_size=args.img_size)
     rf_loader = data.DataLoader(
-        FoggyZurich(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size, img_size=args.img_size),
-        batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True
+        rf_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=rf_dataset.collate_fn
     )
     cwsf_loader_iter = iter(cwsf_loader)
     rf_loader_iter = iter(rf_loader)

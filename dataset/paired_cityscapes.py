@@ -79,7 +79,7 @@ class PairedCityscapes(data.Dataset):
             'labels': torch.tensor(labels, dtype=torch.int64)
         }
 
-    def collate_fn(batch):
+    def collate_fn(self, batch):
         cw_imgs, sf_imgs, cw_labels, sf_labels, names = zip(*batch)
 
         # Stack image tensors
