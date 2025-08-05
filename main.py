@@ -96,8 +96,8 @@ def main():
         cw_img, sf_img, cw_label, sf_label, _ = next(cwsf_loader_iter)
         rf_img, _ = next(rf_loader_iter)
         cw_img, sf_img, rf_img = cw_img.cuda(args.gpu), sf_img.cuda(args.gpu), rf_img.cuda(args.gpu)
-        cw_label = {k: v.cuda(args.gpu) for k, v in cw_label.items()}
-        sf_label = {k: v.cuda(args.gpu) for k, v in sf_label.items()}
+        cw_label = [{k: v.cuda(args.gpu) for k, v in label.items()} for label in cw_label]
+        sf_label = [{k: v.cuda(args.gpu) for k, v in label.items()} for label in sf_label]
 
         # Step 1: Train Fog-Pass Filters
         model.eval()
@@ -141,8 +141,16 @@ def main():
         if i_iter % 3 == 0:  # CW and SF
             det_cw = model(cw_img)
             det_sf = model(sf_img)
-            loss_det_cw = sum(model.module.loss(det_cw, cw_label)[1].values()) if cw_label['boxes'].numel() > 0 else 0
-            loss_det_sf = sum(model.module.loss(det_sf, sf_label)[1].values()) if sf_label['boxes'].numel() > 0 else 0
+            if all(label['boxes'].numel() > 0 for label in cw_label):
+                loss_det_cw = sum(model.module.loss(det_cw, cw_label)[1].values())
+            else:
+                loss_det_cw = 0
+
+            if all(label['boxes'].numel() > 0 for label in sf_label):
+                loss_det_sf = sum(model.module.loss(det_sf, sf_label)[1].values())
+            else:
+                loss_det_sf = 0
+
             # Consistency loss (simplified IoU)
             if det_cw[0].numel() > 0 and det_sf[0].numel() > 0:
                 loss_con = 1 - compute_iou(det_cw[0][:, :4], det_sf[0][:, :4])
@@ -155,7 +163,10 @@ def main():
             det_sf = model(sf_img)
             det_rf = model(rf_img)
             loss_det_cw = 0
-            loss_det_sf = sum(model.module.loss(det_sf, sf_label)[1].values()) if sf_label['boxes'].numel() > 0 else 0
+            if all(label['boxes'].numel() > 0 for label in sf_label):
+                loss_det_sf = sum(model.module.loss(det_sf, sf_label)[1].values())
+            else:
+                loss_det_sf = 0
             loss_con = 0
             features_sf = model.model(sf_img)[1]
             features_rf = model.model(rf_img)[1]
@@ -163,7 +174,10 @@ def main():
         else:  # CW and RF
             det_cw = model(cw_img)
             det_rf = model(rf_img)
-            loss_det_cw = sum(model.module.loss(det_cw, cw_label)[1].values()) if cw_label['boxes'].numel() > 0 else 0
+            if all(label['boxes'].numel() > 0 for label in cw_label):
+                loss_det_cw = sum(model.module.loss(det_cw, cw_label)[1].values())
+            else:
+                loss_det_cw = 0
             loss_det_sf = 0
             loss_con = 0
             features_cw = model.model(cw_img)[1]
