@@ -106,9 +106,9 @@ def main():
         FogPassFilter2.train()
 
         with torch.no_grad():
-            features_cw = model.model(cw_img)[1]  # Backbone features
-            features_sf = model.model(sf_img)[1]
-            features_rf = model.model(rf_img)[1]
+            features_cw = model(cw_img)[1]  # Backbone features
+            features_sf = model(sf_img)[1]
+            features_rf = model(rf_img)[1]
 
         # Extract features from specific layers (adjust indices as needed)
         for idx, (fogpassfilter, optimizer) in enumerate(
@@ -155,8 +155,8 @@ def main():
                 loss_con = 1 - compute_iou(det_cw[0][:, :4], det_sf[0][:, :4])
             else:
                 loss_con = 0
-            features_cw = model.model(cw_img)[1]
-            features_sf = model.model(sf_img)[1]
+            features_cw = model(cw_img)[1]
+            features_sf = model(sf_img)[1]
             feats_a, feats_b = features_cw, features_sf
         elif i_iter % 3 == 1:  # SF and RF
             det_sf = model(sf_img)
@@ -167,8 +167,8 @@ def main():
             else:
                 loss_det_sf = 0
             loss_con = 0
-            features_sf = model.model(sf_img)[1]
-            features_rf = model.model(rf_img)[1]
+            features_sf = model(sf_img)[1]
+            features_rf = model(rf_img)[1]
             feats_a, feats_b = features_rf, features_sf
         else:  # CW and RF
             det_cw = model(cw_img)
@@ -179,8 +179,8 @@ def main():
                 loss_det_cw = 0
             loss_det_sf = 0
             loss_con = 0
-            features_cw = model.model(cw_img)[1]
-            features_rf = model.model(rf_img)[1]
+            features_cw = model(cw_img)[1]
+            features_rf = model(rf_img)[1]
             feats_a, feats_b = features_rf, features_cw
 
         # Fog Style Matching Loss
