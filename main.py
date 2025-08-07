@@ -65,13 +65,13 @@ def main():
     cudnn.enabled = True
 
     # Load YOLOv8n model
-    model = YOLO('yolov8n.pt')
+    model = YOLO('yolov8n.pt').model
     model.train()
     model.cuda(args.gpu)
 
     # Initialize fog-pass filters (adjust input sizes based on YOLOv8n backbone)
-    FogPassFilter1 = FogPassFilter_conv1(2080)  # Placeholder; adjust per layer
-    FogPassFilter2 = FogPassFilter_res1(8256)  # Placeholder; adjust per layer
+    FogPassFilter1 = FogPassFilter_conv1(528)  # Placeholder; adjust per layer
+    FogPassFilter2 = FogPassFilter_res1(2080)  # Placeholder; adjust per layer
     FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=5e-4)
     FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-3)
     FogPassFilter1.cuda(args.gpu)
@@ -313,3 +313,7 @@ def main():
     # Cleanup hooks
     for handle in handles:
         handle.remove()
+
+
+if __name__ == '__main__':
+    main()
