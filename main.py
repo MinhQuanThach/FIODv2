@@ -1,5 +1,7 @@
 import os
 import os.path as osp
+from types import SimpleNamespace
+
 import torch
 import torch.nn as nn
 from torch.utils import data
@@ -45,6 +47,26 @@ def compute_iou(boxes1, boxes2):
     union = area1 + area2 - intersection
     return intersection / (union + 1e-6)
 
+def convert_labels_to_ultralytics_format(label_list):
+    cls_list = []
+    bbox_list = []
+    batch_idx_list = []
+
+    for i, label in enumerate(label_list):
+        if label['boxes'].numel() == 0:
+            continue
+        cls_list.append(label['labels'])  # shape: [num_objs]
+        bbox_list.append(label['boxes'])  # shape: [num_objs, 4]
+        batch_idx_list.append(torch.full((label['labels'].shape[0],), i, device=label['labels'].device, dtype=torch.long))
+
+    if not cls_list:
+        return None  # means empty labels
+
+    return {
+        'cls': torch.cat(cls_list, dim=0),
+        'bboxes': torch.cat(bbox_list, dim=0),
+        'batch_idx': torch.cat(batch_idx_list, dim=0),
+    }
 
 def main():
     args = get_arguments()
@@ -65,6 +87,9 @@ def main():
     cudnn.enabled = True
 
     # Load YOLOv8n model
+    yolo = YOLO('yolov8n.pt')
+    yolo.to(args.gpu)
+    yolo.model.args = SimpleNamespace(box=7.5, cls=0.5, dfl=1.5)
     model = YOLO('yolov8n.pt').model
     model.train()
     model.cuda(args.gpu)
@@ -224,12 +249,24 @@ def main():
             if i_iter % 3 == 0: # CW & SF
                 det_cw = model(cw_img)
                 det_sf = model(sf_img)
-                loss_det_cw = sum(model.loss(cw_label, det_cw)[1].values()) if all(label['boxes'].numel() > 0 for label in cw_label) else 0
-                loss_det_sf = sum(model.loss(sf_label, det_sf)[1].values()) if all(label['boxes'].numel() > 0 for label in sf_label) else 0
+                if all(label['boxes'].numel() > 0 for label in cw_label):
+                    batch_cw = convert_labels_to_ultralytics_format(cw_label)
+                    _, loss_components = yolo.loss(batch_cw, det_cw)
+                    loss_det_cw = loss_components.sum()
+                else:
+                    loss_det_cw = 0
+
+                if all(label['boxes'].numel() > 0 for label in sf_label):
+                    batch_sf = convert_labels_to_ultralytics_format(sf_label)
+                    _, loss_components = yolo.loss(batch_sf, det_sf)
+                    loss_det_sf = loss_components.sum()
+                else:
+                    loss_det_sf = 0
 
                 # Consistency loss (simplified IoU)
                 if det_cw[0].numel() > 0 and det_sf[0].numel() > 0:
-                    loss_con = 1 - compute_iou(det_cw[0][:, :4], det_sf[0][:, :4])
+                    loss_con = 1 - compute_iou(det_cw[0][:, :4], det_sf[0][:, :4]).mean()
+                    # loss_con = torch.tensor(loss_con.mean().item(), device=det_cw[0].device, requires_grad=True)
                 else:
                     loss_con = 0
 
@@ -240,7 +277,13 @@ def main():
             if i_iter % 3 == 1: # SF & RF
                 det_sf = model(sf_img)
                 det_rf = model(rf_img)
-                loss_det_sf = sum(model.loss(sf_label, det_sf)[1].values()) if all(label['boxes'].numel() > 0 for label in sf_label) else 0
+                if all(label['boxes'].numel() > 0 for label in sf_label):
+                    batch_sf = convert_labels_to_ultralytics_format(sf_label)
+                    _, loss_components = yolo.loss(batch_sf, det_sf)
+                    loss_det_sf = loss_components.sum()
+                else:
+                    loss_det_sf = 0
+
                 sf_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = rf_features, sf_features
@@ -248,7 +291,13 @@ def main():
             if i_iter % 3 == 2: # CW & RF
                 det_cw = model(cw_img)
                 det_rf = model(rf_img)
-                loss_det_cw = sum(model.loss(cw_label, det_cw)[1].values()) if all(label['boxes'].numel() > 0 for label in cw_label) else 0
+                if all(label['boxes'].numel() > 0 for label in cw_label):
+                    batch_cw = convert_labels_to_ultralytics_format(cw_label)
+                    _, loss_components = yolo.loss(batch_cw, det_cw)
+                    loss_det_cw = loss_components.sum()
+                else:
+                    loss_det_cw = 0
+
                 cw_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = rf_features, cw_features
