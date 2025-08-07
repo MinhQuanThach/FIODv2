@@ -202,7 +202,7 @@ def main():
                 fog_factor_embeddings = torch.cat([torch.unsqueeze(f, 0) for tri in zip(fog_factor_sf, fog_factor_cw, fog_factor_rf) for f in tri], 0)
                 fog_factor_embeddings_norm = torch.norm(fog_factor_embeddings, p=2, dim=1).detach()
                 fog_factor_embeddings = fog_factor_embeddings.div(fog_factor_embeddings_norm.unsqueeze(1))
-                fog_factor_labels = torch.LongTensor([0, 1, 2] * args.batch_size)
+                fog_factor_labels = torch.LongTensor([0, 1, 2] * args.batch_size).to(args.gpu)
                 fog_pass_filter_loss = fogpassfilter_loss(fog_factor_embeddings, fog_factor_labels)
                 total_fpf_loss += fog_pass_filter_loss
 
@@ -224,8 +224,8 @@ def main():
             if i_iter % 3 == 0: # CW & SF
                 det_cw = model(cw_img)
                 det_sf = model(sf_img)
-                loss_det_cw = sum(model.module.loss(det_cw, cw_label)[1].values()) if all(label['boxes'].numel() > 0 for label in cw_label) else 0
-                loss_det_sf = sum(model.module.loss(det_sf, sf_label)[1].values()) if all(label['boxes'].numel() > 0 for label in sf_label) else 0
+                loss_det_cw = sum(model.loss(cw_label, det_cw)[1].values()) if all(label['boxes'].numel() > 0 for label in cw_label) else 0
+                loss_det_sf = sum(model.loss(sf_label, det_sf)[1].values()) if all(label['boxes'].numel() > 0 for label in sf_label) else 0
 
                 # Consistency loss (simplified IoU)
                 if det_cw[0].numel() > 0 and det_sf[0].numel() > 0:
@@ -240,7 +240,7 @@ def main():
             if i_iter % 3 == 1: # SF & RF
                 det_sf = model(sf_img)
                 det_rf = model(rf_img)
-                loss_det_sf = sum(model.module.loss(det_sf, sf_label)[1].values()) if all(label['boxes'].numel() > 0 for label in sf_label) else 0
+                loss_det_sf = sum(model.loss(sf_label, det_sf)[1].values()) if all(label['boxes'].numel() > 0 for label in sf_label) else 0
                 sf_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = rf_features, sf_features
@@ -248,7 +248,7 @@ def main():
             if i_iter % 3 == 2: # CW & RF
                 det_cw = model(cw_img)
                 det_rf = model(rf_img)
-                loss_det_cw = sum(model.module.loss(det_cw, cw_label)[1].values()) if all(label['boxes'].numel() > 0 for label in cw_label) else 0
+                loss_det_cw = sum(model.loss(cw_label, det_cw)[1].values()) if all(label['boxes'].numel() > 0 for label in cw_label) else 0
                 cw_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = rf_features, cw_features
