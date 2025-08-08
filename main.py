@@ -251,14 +251,14 @@ def main():
                 det_sf = model(sf_img)
                 if all(label['boxes'].numel() > 0 for label in cw_label):
                     batch_cw = convert_labels_to_ultralytics_format(cw_label)
-                    _, loss_components = yolo.loss(batch_cw, det_cw)
+                    loss_components, _ = yolo.loss(batch_cw, det_cw)
                     loss_det_cw = loss_components.sum()
                 else:
                     loss_det_cw = 0
 
                 if all(label['boxes'].numel() > 0 for label in sf_label):
                     batch_sf = convert_labels_to_ultralytics_format(sf_label)
-                    _, loss_components = yolo.loss(batch_sf, det_sf)
+                    loss_components, _ = yolo.loss(batch_sf, det_sf)
                     loss_det_sf = loss_components.sum()
                 else:
                     loss_det_sf = 0
@@ -270,6 +270,15 @@ def main():
                 else:
                     loss_con = 0
 
+                # try:
+                #     pred_cw_tensor = torch.stack(det_cw, dim=0)
+                #     pred_sf_tensor = torch.stack(det_sf, dim=0)
+                # except:
+                #     print("Predictions from CW or SF have inconsistent shapes. Skipping consistency loss this step.")
+                #     loss_con = 0
+                # else:
+                #     loss_con = consistency_loss_fn(pred_cw_tensor, pred_sf_tensor)
+
                 cw_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 sf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = cw_features, sf_features
@@ -279,7 +288,7 @@ def main():
                 det_rf = model(rf_img)
                 if all(label['boxes'].numel() > 0 for label in sf_label):
                     batch_sf = convert_labels_to_ultralytics_format(sf_label)
-                    _, loss_components = yolo.loss(batch_sf, det_sf)
+                    loss_components, _ = yolo.loss(batch_sf, det_sf)
                     loss_det_sf = loss_components.sum()
                 else:
                     loss_det_sf = 0
@@ -293,7 +302,7 @@ def main():
                 det_rf = model(rf_img)
                 if all(label['boxes'].numel() > 0 for label in cw_label):
                     batch_cw = convert_labels_to_ultralytics_format(cw_label)
-                    _, loss_components = yolo.loss(batch_cw, det_cw)
+                    loss_components, _ = yolo.loss(batch_cw, det_cw)
                     loss_det_cw = loss_components.sum()
                 else:
                     loss_det_cw = 0
