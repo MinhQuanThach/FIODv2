@@ -15,7 +15,7 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
-from test import test_model, save_model, plot_losses
+from test import test_model, save_model, plot_losses, convert_labels_to_ultralytics_format
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
 import wandb
@@ -47,27 +47,6 @@ def compute_iou(boxes1, boxes2):
     area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
     union = area1 + area2 - intersection
     return intersection / (union + 1e-6)
-
-def convert_labels_to_ultralytics_format(label_list):
-    cls_list = []
-    bbox_list = []
-    batch_idx_list = []
-
-    for i, label in enumerate(label_list):
-        if label['boxes'].numel() == 0:
-            continue
-        cls_list.append(label['labels'])  # shape: [num_objs]
-        bbox_list.append(label['boxes'])  # shape: [num_objs, 4]
-        batch_idx_list.append(torch.full((label['labels'].shape[0],), i, device=label['labels'].device, dtype=torch.long))
-
-    if not cls_list:
-        return None  # means empty labels
-
-    return {
-        'cls': torch.cat(cls_list, dim=0),
-        'bboxes': torch.cat(bbox_list, dim=0),
-        'batch_idx': torch.cat(batch_idx_list, dim=0),
-    }
 
 def main():
     args = get_arguments()

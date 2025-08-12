@@ -8,10 +8,29 @@ import os.path as osp
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
 from torch.utils.data import DataLoader
-import main
 import numpy as np
 from datetime import datetime
 
+def convert_labels_to_ultralytics_format(label_list):
+    cls_list = []
+    bbox_list = []
+    batch_idx_list = []
+
+    for i, label in enumerate(label_list):
+        if label['boxes'].numel() == 0:
+            continue
+        cls_list.append(label['labels'])  # shape: [num_objs]
+        bbox_list.append(label['boxes'])  # shape: [num_objs, 4]
+        batch_idx_list.append(torch.full((label['labels'].shape[0],), i, device=label['labels'].device, dtype=torch.long))
+
+    if not cls_list:
+        return None  # means empty labels
+
+    return {
+        'cls': torch.cat(cls_list, dim=0),
+        'bboxes': torch.cat(bbox_list, dim=0),
+        'batch_idx': torch.cat(batch_idx_list, dim=0),
+    }
 
 def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
     """Test FIOD model on validation sets (CW, SF, RF) using YOLO metrics."""
@@ -48,7 +67,7 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
             label = [{k: v.to(args.gpu) for k, v in l.items()} for l in label]
 
             # Convert labels to Ultralytics format
-            batch_label = main.convert_labels_to_ultralytics_format(label)
+            batch_label = convert_labels_to_ultralytics_format(label)
             if batch_label is None:
                 continue
 
