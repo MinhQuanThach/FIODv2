@@ -5,6 +5,7 @@ import random
 from torch.utils import data
 from PIL import Image
 import torchvision.transforms as T
+import torch
 
 class FoggyZurich(data.Dataset):
     def __init__(self, root_dir, set='train', max_iters=None, img_size=640):
@@ -33,3 +34,11 @@ class FoggyZurich(data.Dataset):
         if random.random() > 0.5:
             rf_img = T.functional.hflip(rf_img)
         return rf_img, datafiles['name']
+
+    def collate_fn(self, batch):
+        """
+        Hàm này được sử dụng để gom các mẫu trong batch lại với nhau.
+        """
+        fog_images, img_names = zip(*batch)
+        fog_images = torch.stack(fog_images, 0)
+        return fog_images, img_names

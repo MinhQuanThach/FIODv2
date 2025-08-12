@@ -42,11 +42,15 @@ class PairedCityscapes(data.Dataset):
         # Load and preprocess images
         cw_img = Image.open(datafiles['cw_img']).convert('RGB')
         sf_img = Image.open(datafiles['sf_img']).convert('RGB')
+
+        # Resize image and convert t tensor
         cw_img = self.transform(cw_img)
         sf_img = self.transform(sf_img)
+
         # Load and preprocess labels
         cw_label = self.load_yolo_label(datafiles['cw_label'])
         sf_label = self.load_yolo_label(datafiles['sf_label'])
+
         # Random horizontal flip for augmentation
         if random.random() > 0.5:
             cw_img = T.functional.hflip(cw_img)
@@ -74,3 +78,13 @@ class PairedCityscapes(data.Dataset):
             'boxes': torch.tensor(boxes, dtype=torch.float32),
             'labels': torch.tensor(labels, dtype=torch.int64)
         }
+
+    def collate_fn(self, batch):
+        cw_imgs, sf_imgs, cw_labels, sf_labels, names = zip(*batch)
+
+        # Stack image tensors
+        cw_imgs = torch.stack(cw_imgs, dim=0)
+        sf_imgs = torch.stack(sf_imgs, dim=0)
+
+        # Keep labels as lists of dicts
+        return cw_imgs, sf_imgs, list(cw_labels), list(sf_labels), list(names)
