@@ -10,7 +10,7 @@ def get_arguments():
     args.num_classes = 8  # Adjust based on your dataset
     args.num_steps = 10000
     args.random_seed = 1234
-    args.snapshot_dir = '/content/drive/MyDrive/snapshots'
+    args.snapshot_dir = '/content/drive/MyDrive/FIOD_dataset/snapshots'
     args.set = 'train'
     args.lambda_fsm = 1e-7  # Fog style matching weight
     args.lambda_con = 1e-4  # Consistency loss weight

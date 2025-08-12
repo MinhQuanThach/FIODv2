@@ -15,6 +15,7 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
+from test import test_model, save_model, plot_losses
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
 import wandb
@@ -231,7 +232,7 @@ def main():
                 fog_factor_embeddings = torch.cat([torch.unsqueeze(f, 0) for tri in zip(fog_factor_sf, fog_factor_cw, fog_factor_rf) for f in tri], 0)
                 fog_factor_embeddings_norm = torch.norm(fog_factor_embeddings, p=2, dim=1).detach()
                 fog_factor_embeddings = fog_factor_embeddings.div(fog_factor_embeddings_norm.unsqueeze(1))
-                fog_factor_labels = torch.LongTensor([domain_map[d] for d in all_domains] * args.batch_size).to(args.gpu)
+                fog_factor_labels = torch.LongTensor([domain_map[d] for d in all_domains]).to(args.gpu)
                 fog_pass_filter_loss = fogpassfilter_loss(fog_factor_embeddings, fog_factor_labels)
                 total_fpf_loss += fog_pass_filter_loss
 
@@ -371,6 +372,18 @@ def main():
                 "consistency_loss": args.lambda_con * loss_con_value,
                 "total_loss": loss
             }, step=i_iter)
+
+        if i_iter % 1000 == 0 and i_iter > 0:
+            metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
+            print(f"Iter {i_iter} Metrics:", metrics)
+            save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, i_iter)
+
+    # Final test and plot
+    save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, args.num_steps)
+    print("Model saved")
+    metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
+    print("Final Metrics:", metrics)
+    plot_path = plot_losses(run_name)
 
     # Cleanup hooks
     for handle in handles:
