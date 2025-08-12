@@ -162,7 +162,7 @@ def main():
             if batch_cwsf is None:
                 cwsf_loader_iter = iter(cwsf_loader)
                 batch_cwsf = next(cwsf_loader_iter)
-            cw_img, sf_img, cw_label, sf_label, _= batch_cwsf
+            cw_img, sf_img, cw_label, sf_label, _, cw_domains, sf_domains= batch_cwsf
             cw_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in cw_label]
             sf_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in sf_label]
 
@@ -170,11 +170,15 @@ def main():
             if batch_rf is None:
                 rf_loader_iter = iter(rf_loader)
                 batch_rf = next(rf_loader_iter)
-            rf_img, _ = batch_rf
+            rf_img, _, rf_domains = batch_rf
 
             sf_img, cw_img, rf_img = (Variable(sf_img).to(args.gpu),
                                       Variable(cw_img).to(args.gpu),
                                       Variable(rf_img).to(args.gpu))
+
+            # Map domains to IDs
+            domain_map = {'SF': 0, 'CW': 1, 'RF': 2}
+            all_domains = cw_domains + sf_domains + rf_domains
 
             # Forward passes
             for key in features:
@@ -227,7 +231,7 @@ def main():
                 fog_factor_embeddings = torch.cat([torch.unsqueeze(f, 0) for tri in zip(fog_factor_sf, fog_factor_cw, fog_factor_rf) for f in tri], 0)
                 fog_factor_embeddings_norm = torch.norm(fog_factor_embeddings, p=2, dim=1).detach()
                 fog_factor_embeddings = fog_factor_embeddings.div(fog_factor_embeddings_norm.unsqueeze(1))
-                fog_factor_labels = torch.LongTensor([0, 1, 2] * args.batch_size).to(args.gpu)
+                fog_factor_labels = torch.LongTensor([domain_map[d] for d in all_domains] * args.batch_size).to(args.gpu)
                 fog_pass_filter_loss = fogpassfilter_loss(fog_factor_embeddings, fog_factor_labels)
                 total_fpf_loss += fog_pass_filter_loss
 

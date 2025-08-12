@@ -59,7 +59,7 @@ class PairedCityscapes(data.Dataset):
                 cw_label['boxes'][:, [0, 2]] = self.img_size - cw_label['boxes'][:, [2, 0]]
             if sf_label['boxes'].numel() > 0:
                 sf_label['boxes'][:, [0, 2]] = self.img_size - sf_label['boxes'][:, [2, 0]]
-        return cw_img, sf_img, cw_label, sf_label, datafiles['name']
+        return cw_img, sf_img, cw_label, sf_label, datafiles['name'], 'CW', 'SF'
 
     def load_yolo_label(self, label_path):
         boxes, labels = [], []
@@ -80,11 +80,11 @@ class PairedCityscapes(data.Dataset):
         }
 
     def collate_fn(self, batch):
-        cw_imgs, sf_imgs, cw_labels, sf_labels, names = zip(*batch)
+        cw_imgs, sf_imgs, cw_labels, sf_labels, names, cw_domains, sf_domains = zip(*batch)
 
         # Stack image tensors
         cw_imgs = torch.stack(cw_imgs, dim=0)
         sf_imgs = torch.stack(sf_imgs, dim=0)
 
         # Keep labels as lists of dicts
-        return cw_imgs, sf_imgs, list(cw_labels), list(sf_labels), list(names)
+        return cw_imgs, sf_imgs, list(cw_labels), list(sf_labels), list(names), list(cw_domains), list(sf_domains)
