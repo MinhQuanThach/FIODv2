@@ -92,15 +92,15 @@ def main():
     yolo.model.args = SimpleNamespace(box=7.5, cls=0.5, dfl=1.5)
     model = YOLO('yolov8n.pt').model
     model.train()
-    model.cuda(args.gpu)
+    model.to(args.gpu)
 
     # Initialize fog-pass filters (adjust input sizes based on YOLOv8n backbone)
-    FogPassFilter1 = FogPassFilter_conv1(528)  # Placeholder; adjust per layer
-    FogPassFilter2 = FogPassFilter_res1(2080)  # Placeholder; adjust per layer
+    FogPassFilter1 = FogPassFilter_conv1(528)
+    FogPassFilter2 = FogPassFilter_res1(2080)
     FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=5e-4)
     FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-3)
-    FogPassFilter1.cuda(args.gpu)
-    FogPassFilter2.cuda(args.gpu)
+    FogPassFilter1.to(args.gpu)
+    FogPassFilter2.to(args.gpu)
     fogpassfilter_loss = FogPassFilterLoss(margin=0.1)
 
     # Data loaders
@@ -163,8 +163,8 @@ def main():
                 cwsf_loader_iter = iter(cwsf_loader)
                 batch_cwsf = next(cwsf_loader_iter)
             cw_img, sf_img, cw_label, sf_label, _= batch_cwsf
-            cw_label = [{k: v.cuda(args.gpu) for k, v in label.items()} for label in cw_label]
-            sf_label = [{k: v.cuda(args.gpu) for k, v in label.items()} for label in sf_label]
+            cw_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in cw_label]
+            sf_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in sf_label]
 
             batch_rf = next(rf_loader_iter, None)
             if batch_rf is None:
@@ -172,9 +172,9 @@ def main():
                 batch_rf = next(rf_loader_iter)
             rf_img, _ = batch_rf
 
-            sf_img, cw_img, rf_img = (Variable(sf_img).cuda(args.gpu),
-                                      Variable(cw_img).cuda(args.gpu),
-                                      Variable(rf_img).cuda(args.gpu))
+            sf_img, cw_img, rf_img = (Variable(sf_img).to(args.gpu),
+                                      Variable(cw_img).to(args.gpu),
+                                      Variable(rf_img).to(args.gpu))
 
             # Forward passes
             for key in features:
