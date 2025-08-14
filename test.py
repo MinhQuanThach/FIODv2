@@ -38,107 +38,6 @@ def convert_labels_to_ultralytics_format(label_list):
         'batch_idx': torch.cat(batch_idx_list, dim=0),
     }
 
-# def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
-#     """Test FIOD model on validation sets (CW, SF, RF) using YOLO metrics."""
-#     model.eval()
-#     yolo.eval()
-#     FogPassFilter1.eval()
-#     FogPassFilter2.eval()
-#
-#     # Validation datasets
-#     cwsf_val_dataset = PairedCityscapes(args.data_dir, set='val', img_size=args.img_size)
-#     rf_val_dataset = FoggyZurich(args.data_dir, set='val', img_size=args.img_size)
-#
-#     cwsf_val_loader = DataLoader(
-#         cwsf_val_dataset, batch_size=args.batch_size, shuffle=False,
-#         num_workers=args.num_workers, pin_memory=True, collate_fn=cwsf_val_dataset.collate_fn
-#     )
-#     rf_val_loader = DataLoader(
-#         rf_val_dataset, batch_size=args.batch_size, shuffle=False,
-#         num_workers=args.num_workers, pin_memory=True, collate_fn=rf_val_dataset.collate_fn
-#     )
-#
-#     # Metrics storage
-#     metrics = {'CW': {}, 'SF': {}, 'RF': {}}
-#     dataset_dict = {'CW': {}, 'SF': {}, 'RF': {}}
-#
-#     # Dataset dictionaries for YOLO's .val()
-#     dataset_dict['CW'] = {
-#         'path': '/content/drive/MyDrive/FIOD_dataset/data/CW',
-#         'train': 'images/train',
-#         'val': 'images/val',
-#         'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
-#     }
-#     dataset_dict['SF'] = {
-#         'path': '/content/drive/MyDrive/FIOD_dataset/data/SF',
-#         'train': 'images/train',
-#         'val': 'images/val',
-#         'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
-#     }
-#     dataset_dict['RF'] = {
-#         'path': '/content/drive/MyDrive/FIOD_dataset/data/RF',
-#         'train': 'images/train',
-#         'val': 'images/val',
-#         'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
-#     }
-#
-#     # Evaluate CW and SF (with labels)
-#     for domain in ['CW', 'SF']:
-#         total_loss = 0
-#         for batch in cwsf_val_loader:
-#             cw_img, sf_img, cw_label, sf_label, _, _, _ = batch
-#             img = cw_img if domain == 'CW' else sf_img
-#             label = cw_label if domain == 'CW' else sf_label
-#             img = img.to(args.gpu)
-#             label = [{k: v.to(args.gpu) for k, v in l.items()} for l in label]
-#
-#             # Convert labels to Ultralytics format
-#             batch_label = convert_labels_to_ultralytics_format(label)
-#             if batch_label is None:
-#                 continue
-#
-#             with torch.no_grad():
-#                 preds = model(img)
-#                 loss_components, _ = yolo.loss(batch_label, preds)
-#                 total_loss += loss_components.sum().item()
-#
-#         yaml_path = make_temp_yaml(dataset_dict[domain], "data.yaml")
-#         yolo_metrics = yolo.val(data=yaml_path, task='detect')
-#         metrics[domain] = {
-#             'loss': total_loss / len(cwsf_val_loader),
-#             'mAP50': yolo_metrics.box.map50,
-#             'mAP50_95': yolo_metrics.box.map,
-#             'precision': yolo_metrics.box.p,
-#             'recall': yolo_metrics.box.r
-#         }
-#
-#     # Evaluate RF (qualitative, no labels)
-#     for batch in rf_val_loader:
-#         rf_img, _, _ = batch
-#         rf_img = rf_img.to(args.gpu)
-#         with torch.no_grad():
-#             preds = model(rf_img)
-#
-#     # Log qualitative RF metrics (e.g., number of detections)
-#     rf_yaml_path = make_temp_yaml(dataset_dict['RF'], "rf_data.yaml")
-#     pred_results = yolo.predict('/content/drive/MyDrive/FIOD_dataset/data/RF/images/val', save=False)
-#     metrics['RF'] = {
-#         'num_detections': sum(len(pred.boxes) for pred in pred_results)
-#     }
-#
-#     # Log metrics to wandb
-#     wandb.log({
-#         'val/CW_loss': metrics['CW']['loss'],
-#         'val/CW_mAP50': metrics['CW']['mAP50'],
-#         'val/CW_mAP50_95': metrics['CW']['mAP50_95'],
-#         'val/SF_loss': metrics['SF']['loss'],
-#         'val/SF_mAP50': metrics['SF']['mAP50'],
-#         'val/SF_mAP50_95': metrics['SF']['mAP50_95'],
-#         'val/RF_num_detections': metrics['RF']['num_detections']
-#     })
-#
-#     return metrics
-
 def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
     """Test FIOD model on validation sets (CW, SF, RF) using YOLO metrics."""
     model.eval()
@@ -154,18 +53,28 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
         cwsf_val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.num_workers, pin_memory=True, collate_fn=cwsf_val_dataset.collate_fn
     )
-    rf_val_loader = DataLoader(
-        rf_val_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers, pin_memory=True, collate_fn=rf_val_dataset.collate_fn
-    )
 
     # Metrics storage
     metrics = {'CW': {}, 'SF': {}, 'RF': {}}
+    dataset_dict = {'CW': {}, 'SF': {}, 'RF': {}}
+
+    # Dataset dictionaries for YOLO's .val()
+    dataset_dict['CW'] = {
+        'path': '/content/drive/MyDrive/FIOD_dataset/data/CW',
+        'train': 'images/train',
+        'val': 'images/val',
+        'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
+    }
+    dataset_dict['SF'] = {
+        'path': '/content/drive/MyDrive/FIOD_dataset/data/SF',
+        'train': 'images/train',
+        'val': 'images/val',
+        'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
+    }
 
     # Evaluate CW and SF (with labels)
     for domain in ['CW', 'SF']:
         total_loss = 0
-        yolo_results = []
         for batch in cwsf_val_loader:
             cw_img, sf_img, cw_label, sf_label, _, _, _ = batch
             img = cw_img if domain == 'CW' else sf_img
@@ -183,12 +92,8 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
                 loss_components, _ = yolo.loss(batch_label, preds)
                 total_loss += loss_components.sum().item()
 
-                # Collect predictions for metrics
-                for pred in preds:
-                    yolo_results.append(pred.cpu())
-
-        # Compute YOLO metrics (mAP@50, mAP@50:95, etc.)
-        yolo_metrics = yolo.val(data=yolo_results, task='detect')
+        yaml_path = make_temp_yaml(dataset_dict[domain], "data.yaml")
+        yolo_metrics = yolo.val(data=yaml_path, task='detect')
         metrics[domain] = {
             'loss': total_loss / len(cwsf_val_loader),
             'mAP50': yolo_metrics.box.map50,
@@ -197,18 +102,10 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
             'recall': yolo_metrics.box.r
         }
 
-    # Evaluate RF (qualitative, no labels)
-    rf_results = []
-    for batch in rf_val_loader:
-        rf_img, _ = batch
-        rf_img = rf_img.to(args.gpu)
-        with torch.no_grad():
-            preds = model(rf_img)
-            rf_results.extend([pred.cpu() for pred in preds])
-
     # Log qualitative RF metrics (e.g., number of detections)
+    pred_results = yolo.predict('/content/drive/MyDrive/FIOD_dataset/data/RF/images/val', save=False)
     metrics['RF'] = {
-        'num_detections': sum(len(pred.boxes) for pred in rf_results)
+        'num_detections': sum(len(pred.boxes) for pred in pred_results)
     }
 
     # Log metrics to wandb
