@@ -15,7 +15,7 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
-from test import test_model, save_model, plot_losses, convert_labels_to_ultralytics_format
+from test import test_model, save_model, convert_labels_to_ultralytics_format
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
 import wandb
@@ -355,14 +355,12 @@ def main():
         if i_iter % 1000 == 0 and i_iter > 0:
             metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
             print(f"Iter {i_iter} Metrics:", metrics)
-            save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, i_iter)
 
     # Final test and plot
     save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, args.num_steps)
     print("Model saved")
     metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
     print("Final Metrics:", metrics)
-    plot_path = plot_losses(run_name)
 
     # Cleanup hooks
     for handle in handles:
