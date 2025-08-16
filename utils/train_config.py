@@ -8,7 +8,7 @@ def get_arguments():
     args.data_dir = '/content/drive/MyDrive/FIOD_dataset/data'
     args.img_size = 640
     args.num_classes = 8  # Adjust based on your dataset
-    args.num_steps = 10000
+    args.num_steps = 2000
     args.random_seed = 1234
     args.snapshot_dir = '/content/drive/MyDrive/FIOD_dataset/snapshots'
     args.set = 'train'

@@ -77,8 +77,8 @@ def main():
     # Initialize fog-pass filters (adjust input sizes based on YOLOv8n backbone)
     FogPassFilter1 = FogPassFilter_conv1(528)
     FogPassFilter2 = FogPassFilter_res1(2080)
-    FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=5e-4)
-    FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-3)
+    FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=1e-4)
+    FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-4)
     FogPassFilter1.to(args.gpu)
     FogPassFilter2.to(args.gpu)
     fogpassfilter_loss = FogPassFilterLoss(margin=0.1)
@@ -345,6 +345,7 @@ def main():
             scheduler.step()
 
             wandb.log({
+                "total_fpf_loss": total_fpf_loss,
                 "loss_det_cw": loss_det_cw_value,
                 "loss_det_sf": loss_det_sf_value,
                 "fsm_loss": args.lambda_fsm * loss_fsm_value,

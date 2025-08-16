@@ -47,7 +47,6 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
 
     # Validation datasets
     cwsf_val_dataset = PairedCityscapes(args.data_dir, set='val', img_size=args.img_size)
-    rf_val_dataset = FoggyZurich(args.data_dir, set='val', img_size=args.img_size)
 
     cwsf_val_loader = DataLoader(
         cwsf_val_dataset, batch_size=args.batch_size, shuffle=False,
