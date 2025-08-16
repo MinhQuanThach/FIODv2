@@ -15,6 +15,7 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
+from test import test_model, save_model, convert_labels_to_ultralytics_format
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
 import wandb
@@ -47,27 +48,6 @@ def compute_iou(boxes1, boxes2):
     union = area1 + area2 - intersection
     return intersection / (union + 1e-6)
 
-def convert_labels_to_ultralytics_format(label_list):
-    cls_list = []
-    bbox_list = []
-    batch_idx_list = []
-
-    for i, label in enumerate(label_list):
-        if label['boxes'].numel() == 0:
-            continue
-        cls_list.append(label['labels'])  # shape: [num_objs]
-        bbox_list.append(label['boxes'])  # shape: [num_objs, 4]
-        batch_idx_list.append(torch.full((label['labels'].shape[0],), i, device=label['labels'].device, dtype=torch.long))
-
-    if not cls_list:
-        return None  # means empty labels
-
-    return {
-        'cls': torch.cat(cls_list, dim=0),
-        'bboxes': torch.cat(bbox_list, dim=0),
-        'batch_idx': torch.cat(batch_idx_list, dim=0),
-    }
-
 def main():
     args = get_arguments()
     # Set random seeds for reproducibility
@@ -97,8 +77,8 @@ def main():
     # Initialize fog-pass filters (adjust input sizes based on YOLOv8n backbone)
     FogPassFilter1 = FogPassFilter_conv1(528)
     FogPassFilter2 = FogPassFilter_res1(2080)
-    FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=5e-4)
-    FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-3)
+    FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=1e-4)
+    FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-4)
     FogPassFilter1.to(args.gpu)
     FogPassFilter2.to(args.gpu)
     fogpassfilter_loss = FogPassFilterLoss(margin=0.1)
@@ -162,7 +142,7 @@ def main():
             if batch_cwsf is None:
                 cwsf_loader_iter = iter(cwsf_loader)
                 batch_cwsf = next(cwsf_loader_iter)
-            cw_img, sf_img, cw_label, sf_label, _= batch_cwsf
+            cw_img, sf_img, cw_label, sf_label, _, cw_domains, sf_domains= batch_cwsf
             cw_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in cw_label]
             sf_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in sf_label]
 
@@ -170,11 +150,15 @@ def main():
             if batch_rf is None:
                 rf_loader_iter = iter(rf_loader)
                 batch_rf = next(rf_loader_iter)
-            rf_img, _ = batch_rf
+            rf_img, _, rf_domains = batch_rf
 
             sf_img, cw_img, rf_img = (Variable(sf_img).to(args.gpu),
                                       Variable(cw_img).to(args.gpu),
                                       Variable(rf_img).to(args.gpu))
+
+            # Map domains to IDs
+            domain_map = {'SF': 0, 'CW': 1, 'RF': 2}
+            all_domains = cw_domains + sf_domains + rf_domains
 
             # Forward passes
             for key in features:
@@ -227,7 +211,7 @@ def main():
                 fog_factor_embeddings = torch.cat([torch.unsqueeze(f, 0) for tri in zip(fog_factor_sf, fog_factor_cw, fog_factor_rf) for f in tri], 0)
                 fog_factor_embeddings_norm = torch.norm(fog_factor_embeddings, p=2, dim=1).detach()
                 fog_factor_embeddings = fog_factor_embeddings.div(fog_factor_embeddings_norm.unsqueeze(1))
-                fog_factor_labels = torch.LongTensor([0, 1, 2] * args.batch_size).to(args.gpu)
+                fog_factor_labels = torch.LongTensor([domain_map[d] for d in all_domains]).to(args.gpu)
                 fog_pass_filter_loss = fogpassfilter_loss(fog_factor_embeddings, fog_factor_labels)
                 total_fpf_loss += fog_pass_filter_loss
 
@@ -361,12 +345,23 @@ def main():
             scheduler.step()
 
             wandb.log({
+                "total_fpf_loss": total_fpf_loss,
                 "loss_det_cw": loss_det_cw_value,
                 "loss_det_sf": loss_det_sf_value,
                 "fsm_loss": args.lambda_fsm * loss_fsm_value,
                 "consistency_loss": args.lambda_con * loss_con_value,
                 "total_loss": loss
             }, step=i_iter)
+
+        if i_iter % 1000 == 0 and i_iter > 0:
+            metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
+            print(f"Iter {i_iter} Metrics:", metrics)
+
+    # Final test and plot
+    save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, args.num_steps)
+    print("Model saved")
+    metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
+    print("Final Metrics:", metrics)
 
     # Cleanup hooks
     for handle in handles:
