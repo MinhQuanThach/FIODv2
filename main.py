@@ -69,7 +69,7 @@ def main():
     # Load YOLOv8n model
     yolo = YOLO('yolov8n.pt')
     yolo.to(args.gpu)
-    yolo.model.args = SimpleNamespace(box=7.5, cls=0.5, dfl=1.5)
+    yolo.model.args = SimpleNamespace(box=0.05, cls=0.5, dfl=1.5)
     model = YOLO('yolov8n.pt').model
     model.train()
     model.to(args.gpu)
@@ -353,7 +353,7 @@ def main():
                 "total_loss": loss
             }, step=i_iter)
 
-        if i_iter % 1000 == 0 and i_iter > 0:
+        if i_iter % 100 == 0 and i_iter > 0:
             metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
             print(f"Iter {i_iter} Metrics:", metrics)
 

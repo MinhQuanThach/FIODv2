@@ -41,6 +41,7 @@ def convert_labels_to_ultralytics_format(label_list):
 def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
     """Test FIOD model on validation sets (CW, SF, RF) using YOLO metrics."""
     model.eval()
+    yolo.model.load_state_dict(model.state_dict()) # Update yolo weights with trained model
     yolo.eval()
     FogPassFilter1.eval()
     FogPassFilter2.eval()
