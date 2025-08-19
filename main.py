@@ -18,6 +18,7 @@ from dataset.foggy_zurich import FoggyZurich
 from test import test_model, save_model, convert_labels_to_ultralytics_format
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
+from context import model, yolo, args
 import wandb
 
 
@@ -49,7 +50,6 @@ def compute_iou(boxes1, boxes2):
     return intersection / (union + 1e-6)
 
 def main():
-    args = get_arguments()
     # Set random seeds for reproducibility
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
@@ -65,14 +65,6 @@ def main():
 
     # Enable CuDNN
     cudnn.enabled = True
-
-    # Load YOLOv8n model
-    yolo = YOLO('yolov8n.pt')
-    yolo.to(args.gpu)
-    yolo.model.args = SimpleNamespace(box=0.05, cls=0.5, dfl=1.5)
-    model = YOLO('yolov8n.pt').model
-    model.train()
-    model.to(args.gpu)
 
     # Initialize fog-pass filters (adjust input sizes based on YOLOv8n backbone)
     FogPassFilter1 = FogPassFilter_conv1(528)
