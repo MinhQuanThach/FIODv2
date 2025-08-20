@@ -39,6 +39,40 @@ def convert_labels_to_ultralytics_format(label_list):
         'batch_idx': torch.cat(batch_idx_list, dim=0),
     }
 
+def check_fresh_wrapper(model, args):
+    # 1) Save trained weights
+    torch.save(model.state_dict(), "/content/trained_from_loop.pt")
+    print("saved:", os.path.exists("/content/trained_from_loop.pt"))
+
+    # 2) Load into fresh YOLO wrapper (fresh wrapper avoids in-process state bugs)
+    y_fresh = YOLO('yolov8n.pt')  # fresh wrapper
+    ckpt = torch.load("/content/trained_from_loop.pt", map_location='cpu')
+    y_fresh.model.load_state_dict(ckpt)  # load trained weights
+    y_fresh.model.to(args.gpu)
+    y_fresh.model.eval()
+
+    # Dataset dictionaries for YOLO's .val()
+    CW_dict = {
+        'path': '/content/drive/MyDrive/FIOD_dataset/data/CW',
+        'train': 'images/train',
+        'val': 'images/val',
+        'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
+    }
+
+    # 3) Ensure names/nc consistent with your dataset (8 classes)
+    y_fresh.model.nc = len(CW_dict['names'])
+    y_fresh.model.names = CW_dict['names']
+
+    # 4) Try to predict on one sample with low conf
+    sample = "/content/drive/MyDrive/FIOD_dataset/data/CW/images/val/frankfurt_000000_000294_leftImg8bit.png"
+    preds = y_fresh.predict(sample, conf=0.001, imgsz=args.img_size, save=False)
+    print("boxes on sample (fresh wrapper):", [len(p.boxes) for p in preds][:10])
+    # 5) Try val (if you can)
+    yaml_path = make_temp_yaml(CW_dict, "data.yaml")
+    res = y_fresh.val(data=yaml_path, task='detect')
+    print("fresh-wrapper val result:", res)
+
+
 def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
     """Test FIOD model on validation sets (CW, SF, RF) using YOLO metrics."""
     model.eval()

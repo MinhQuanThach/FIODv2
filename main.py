@@ -15,10 +15,10 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
-from test import test_model, save_model, convert_labels_to_ultralytics_format
+from test import test_model, save_model, convert_labels_to_ultralytics_format, check_fresh_wrapper
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
-from context import model, yolo, args
+from context import yolo, args
 import wandb
 
 
@@ -88,7 +88,7 @@ def main():
     rf_loader_iter = iter(rf_loader)
 
     # Optimizer and scheduler
-    optimiser = get_optimisers(model)
+    optimiser = get_optimisers(yolo.model)
     scheduler = get_lr_schedulers(optimiser, args.num_steps)
     opts = make_list(optimiser)
 
@@ -103,7 +103,7 @@ def main():
         return hook
 
     for layer_idx in feature_layers:
-        handle = model.model[layer_idx].register_forward_hook(hook_fn(layer_idx))
+        handle = yolo.model.model[layer_idx].register_forward_hook(hook_fn(layer_idx))
         handles.append(handle)
 
     # Training loop
@@ -121,8 +121,8 @@ def main():
         for sub_i in range(args.iter_size):
             # Step 1: Train fog-pass filters
 
-            model.eval()
-            for param in model.parameters():
+            yolo.model.eval()
+            for param in yolo.model.parameters():
                 param.requires_grad = False
             for param in FogPassFilter1.parameters():
                 param.requires_grad = True
@@ -155,9 +155,9 @@ def main():
             # Forward passes
             for key in features:
                 features[key].clear()
-            _ = model(cw_img)
-            _ = model(sf_img)
-            _ = model(rf_img)
+            _ = yolo.model(cw_img)
+            _ = yolo.model(sf_img)
+            _ = yolo.model(rf_img)
             features_cw = {idx: features[idx][0] for idx in feature_layers}
             features_sf = {idx: features[idx][1] for idx in feature_layers}
             features_rf = {idx: features[idx][2] for idx in feature_layers}
@@ -210,8 +210,8 @@ def main():
             total_fpf_loss.backward()
 
             # Step 2: Train YOLO model
-            model.train()
-            for param in model.parameters():
+            yolo.model.train()
+            for param in yolo.model.parameters():
                 param.requires_grad = True
             for param in FogPassFilter1.parameters():
                 param.requires_grad = False
@@ -223,8 +223,8 @@ def main():
                 features[key].clear()
 
             if i_iter % 3 == 0: # CW & SF
-                det_cw = model(cw_img)
-                det_sf = model(sf_img)
+                det_cw = yolo.model(cw_img)
+                det_sf = yolo.model(sf_img)
                 if all(label['boxes'].numel() > 0 for label in cw_label):
                     batch_cw = convert_labels_to_ultralytics_format(cw_label)
                     loss_components, _ = yolo.loss(batch_cw, det_cw)
@@ -260,8 +260,8 @@ def main():
                 a_features, b_features = cw_features, sf_features
 
             if i_iter % 3 == 1: # SF & RF
-                det_sf = model(sf_img)
-                det_rf = model(rf_img)
+                det_sf = yolo.model(sf_img)
+                det_rf = yolo.model(rf_img)
                 if all(label['boxes'].numel() > 0 for label in sf_label):
                     batch_sf = convert_labels_to_ultralytics_format(sf_label)
                     loss_components, _ = yolo.loss(batch_sf, det_sf)
@@ -274,8 +274,8 @@ def main():
                 a_features, b_features = rf_features, sf_features
 
             if i_iter % 3 == 2: # CW & RF
-                det_cw = model(cw_img)
-                det_rf = model(rf_img)
+                det_cw = yolo.model(cw_img)
+                det_rf = yolo.model(rf_img)
                 if all(label['boxes'].numel() > 0 for label in cw_label):
                     batch_cw = convert_labels_to_ultralytics_format(cw_label)
                     loss_components, _ = yolo.loss(batch_cw, det_cw)
@@ -346,14 +346,17 @@ def main():
             }, step=i_iter)
 
         if i_iter % 100 == 0 and i_iter > 0:
-            metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
+            metrics = test_model(args, yolo.model, yolo, FogPassFilter1, FogPassFilter2)
             print(f"Iter {i_iter} Metrics:", metrics)
 
     # Final test and plot
-    save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, args.num_steps)
+    save_model(args, yolo.model, FogPassFilter1, FogPassFilter2, run_name, args.num_steps)
     print("Model saved")
-    metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
+    metrics = test_model(args, yolo.model, yolo, FogPassFilter1, FogPassFilter2)
     print("Final Metrics:", metrics)
+
+    print("CHECK FRESH WRAPPER:")
+    check_fresh_wrapper(yolo.model, args)
 
     # Cleanup hooks
     for handle in handles:
