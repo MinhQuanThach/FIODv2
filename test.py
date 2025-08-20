@@ -1,6 +1,7 @@
 import os
 
-import torch
+import torch, copy, cv2
+from types import SimpleNamespace
 from ultralytics import YOLO
 import wandb
 import matplotlib.pyplot as plt
@@ -44,6 +45,32 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
     yolo.eval()
     FogPassFilter1.eval()
     FogPassFilter2.eval()
+
+    try:
+        yolo.model.load_state_dict(model.state_dict())
+    except Exception:
+        # fallback: assign directly
+        yolo.model = copy.deepcopy(model)
+    yolo.model.args = SimpleNamespace(box=0.05, cls=0.5, dfl=1.5)
+    yolo.model.to(args.gpu)
+    yolo.model.eval()
+
+    # # pick one sample image from your val set
+    # sample_path = "/content/drive/MyDrive/FIOD_dataset/data/CW/images/val/frankfurt_000000_000294_leftImg8bit.png"
+    #
+    # img = cv2.imread(sample_path)[:, :, ::-1]  # BGR->RGB
+    # img = cv2.resize(img, (args.img_size, args.img_size))
+    # img = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+    # sample_img = img.unsqueeze(0).to(args.gpu)
+    #
+    # with torch.no_grad():
+    #     out_model = model(sample_img)
+    #     out_yolo = yolo.model(sample_img)
+    #
+    # # Compare raw outputs numerically
+    # print("Max abs difference:", (out_model[0] - out_yolo[0]).abs().max().item())
+    # print("model outputs (first 5):", out_model[0].flatten()[:5].cpu().numpy())
+    # print("yolo.model outputs (first 5):", out_yolo[0].flatten()[:5].cpu().numpy())
 
     # Validation datasets
     cwsf_val_dataset = PairedCityscapes(args.data_dir, set='val', img_size=args.img_size)
