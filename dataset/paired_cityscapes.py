@@ -51,14 +51,6 @@ class PairedCityscapes(data.Dataset):
         cw_label = self.load_yolo_label(datafiles['cw_label'])
         sf_label = self.load_yolo_label(datafiles['sf_label'])
 
-        # Random horizontal flip for augmentation
-        if random.random() > 0.5:
-            cw_img = T.functional.hflip(cw_img)
-            sf_img = T.functional.hflip(sf_img)
-            if cw_label['boxes'].numel() > 0:
-                cw_label['boxes'][:, [0, 2]] = self.img_size - cw_label['boxes'][:, [2, 0]]
-            if sf_label['boxes'].numel() > 0:
-                sf_label['boxes'][:, [0, 2]] = self.img_size - sf_label['boxes'][:, [2, 0]]
         return cw_img, sf_img, cw_label, sf_label, datafiles['name'], 'CW', 'SF'
 
     def load_yolo_label(self, label_path):
@@ -67,12 +59,7 @@ class PairedCityscapes(data.Dataset):
             with open(label_path, 'r') as f:
                 for line in f:
                     class_id, x, y, w, h = map(float, line.strip().split())
-                    # Convert normalized coordinates to absolute (640x640)
-                    x_min = (x - w/2) * self.img_size
-                    y_min = (y - h/2) * self.img_size
-                    x_max = (x + w/2) * self.img_size
-                    y_max = (y + h/2) * self.img_size
-                    boxes.append([x_min, y_min, x_max, y_max])
+                    boxes.append([x, y, w, h])
                     labels.append(int(class_id))
         return {
             'boxes': torch.tensor(boxes, dtype=torch.float32),

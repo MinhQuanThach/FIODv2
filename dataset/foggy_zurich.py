@@ -31,8 +31,6 @@ class FoggyZurich(data.Dataset):
         datafiles = self.files[index]
         rf_img = Image.open(datafiles['rf_img']).convert('RGB')
         rf_img = self.transform(rf_img)
-        if random.random() > 0.5:
-            rf_img = T.functional.hflip(rf_img)
         return rf_img, datafiles['name'], 'RF'
 
     def collate_fn(self, batch):

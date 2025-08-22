@@ -59,9 +59,9 @@ def check_fresh_wrapper(model, args):
         'names': {0: 'person', 1: 'rider', 2: 'car', 3: 'bicycle', 4: 'motorcycle', 5: 'bus', 6: 'truck', 7: 'train'}
     }
 
-    # 3) Ensure names/nc consistent with your dataset (8 classes)
-    y_fresh.model.nc = len(CW_dict['names'])
-    y_fresh.model.names = CW_dict['names']
+    # # 3) Ensure names/nc consistent with your dataset (8 classes)
+    # y_fresh.model.nc = len(CW_dict['names'])
+    # y_fresh.model.names = CW_dict['names']
 
     # 4) Try to predict on one sample with low conf
     sample = "/content/drive/MyDrive/FIOD_dataset/data/CW/images/val/frankfurt_000000_000294_leftImg8bit.png"
