@@ -15,7 +15,7 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
-from test import test_model, save_model, convert_labels_to_ultralytics_format
+from test import test_model, save_model, convert_labels_to_ultralytics_format, check_fresh_wrapper
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
 from context import model, yolo, args
@@ -319,22 +319,25 @@ def main():
                 loss_fsm += layer_fsm_loss / args.batch_size
 
             loss = (loss_det_sf + loss_det_cw + args.lambda_fsm * loss_fsm + args.lambda_con * loss_con) / args.iter_size
-            loss.backward()
+            if loss.requires_grad and loss != 0:
+                loss.backward()
 
-            if loss_det_cw != 0:
-                loss_det_cw_value += loss_det_cw.item() / args.iter_size
-            if loss_det_sf != 0:
-                loss_det_sf_value += loss_det_sf.item() / args.iter_size
-            if loss_fsm != 0:
-                loss_fsm_value += loss_fsm.item() / args.iter_size
-            if loss_con != 0:
-                loss_con_value += loss_con.item() / args.iter_size
+                if loss_det_cw != 0:
+                    loss_det_cw_value += loss_det_cw.item() / args.iter_size
+                if loss_det_sf != 0:
+                    loss_det_sf_value += loss_det_sf.item() / args.iter_size
+                if loss_fsm != 0:
+                    loss_fsm_value += loss_fsm.item() / args.iter_size
+                if loss_con != 0:
+                    loss_con_value += loss_con.item() / args.iter_size
 
-            for opt in opts:
-                opt.step()
-            FogPassFilter1_optimizer.step()
-            FogPassFilter2_optimizer.step()
-            scheduler.step()
+                for opt in opts:
+                    opt.step()
+                FogPassFilter1_optimizer.step()
+                FogPassFilter2_optimizer.step()
+                scheduler.step()
+            else:
+                print(f"Skipped backward at iter {i_iter}, sub {sub_i}: Zero loss (empty batch?)")
 
             wandb.log({
                 "total_fpf_loss": total_fpf_loss,
@@ -354,6 +357,9 @@ def main():
     print("Model saved")
     metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
     print("Final Metrics:", metrics)
+
+    print("CHECK FRESH WRAPPER:")
+    check_fresh_wrapper(model, args)
 
     # Cleanup hooks
     for handle in handles:
