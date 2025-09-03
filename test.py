@@ -80,11 +80,7 @@ def test_model(args, model, yolo, FogPassFilter1, FogPassFilter2):
     FogPassFilter1.eval()
     FogPassFilter2.eval()
 
-    try:
-        yolo.model.load_state_dict(model.state_dict())
-    except Exception:
-        # fallback: assign directly
-        yolo.model = copy.deepcopy(model)
+    yolo.model = copy.deepcopy(model)
     yolo.model.args = SimpleNamespace(box=0.05, cls=0.5, dfl=1.5)
     yolo.model.to(args.gpu)
     yolo.model.eval()

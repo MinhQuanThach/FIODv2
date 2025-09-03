@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import torch
 import torch.nn as nn
+from scipy.optimize import linear_sum_assignment
 from torch.utils import data
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
@@ -37,17 +38,40 @@ def make_list(x):
     else:
         return [x]
 
-def compute_iou(boxes1, boxes2):
-    """Simple IoU computation for consistency loss."""
-    x1 = torch.max(boxes1[:, 0], boxes2[:, 0])
-    y1 = torch.max(boxes1[:, 1], boxes2[:, 1])
-    x2 = torch.min(boxes1[:, 2], boxes2[:, 2])
-    y2 = torch.min(boxes1[:, 3], boxes2[:, 3])
-    intersection = torch.clamp(x2 - x1, min=0) * torch.clamp(y2 - y1, min=0)
+def compute_iou(boxes1, boxes2, K=300):
+    """
+    Compute mean IoU with Hungarian matching, keeping top-K detections by confidence.
+    Args:
+        boxes1: [N, 5] (x1, y1, x2, y2, conf)
+        boxes2: [M, 5] (x1, y1, x2, y2, conf)
+        K: number of top boxes to keep
+    """
+    # --- Filter top-K by confidence ---
+    boxes1 = boxes1[boxes1[:, 4].argsort(descending=True)[:K], :4]
+    boxes2 = boxes2[boxes2[:, 4].argsort(descending=True)[:K], :4]
+
+    N, M = boxes1.shape[0], boxes2.shape[0]
+    if N == 0 or M == 0:
+        return torch.tensor(0.0, device=boxes1.device)
+
+    # --- Compute IoU matrix ---
+    x1 = torch.max(boxes1[:, None, 0], boxes2[:, 0])
+    y1 = torch.max(boxes1[:, None, 1], boxes2[:, 1])
+    x2 = torch.min(boxes1[:, None, 2], boxes2[:, 2])
+    y2 = torch.min(boxes1[:, None, 3], boxes2[:, 3])
+
+    inter = torch.clamp(x2 - x1, min=0) * torch.clamp(y2 - y1, min=0)
     area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
     area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
-    union = area1 + area2 - intersection
-    return intersection / (union + 1e-6)
+    union = area1[:, None] + area2 - inter
+    iou = inter / (union + 1e-6)  # [N, M]
+
+    # --- Hungarian matching ---
+    iou_np = iou.cpu().detach().numpy()
+    row_ind, col_ind = linear_sum_assignment(-iou_np)
+    matched_iou = iou[row_ind, col_ind]
+
+    return matched_iou.mean()
 
 def main():
     # Set random seeds for reproducibility
@@ -239,21 +263,15 @@ def main():
                 else:
                     loss_det_sf = 0
 
-                # Consistency loss (simplified IoU)
+                det_cw_processed = yolo(cw_img)
+                det_sf_processed = yolo(sf_img)
+                # Consistency loss with matched IoU
                 if det_cw[0].numel() > 0 and det_sf[0].numel() > 0:
-                    loss_con = 1 - compute_iou(det_cw[0][:, :4], det_sf[0][:, :4]).mean()
-                    # loss_con = torch.tensor(loss_con.mean().item(), device=det_cw[0].device, requires_grad=True)
+                    boxes_cw = torch.cat([det_cw_processed[0].boxes.xyxy, det_cw_processed[0].boxes.conf[:, None]], dim=1) # shape [N, 5] = [x1, y1, x2, y2, conf]
+                    boxes_sf = torch.cat([det_sf_processed[0].boxes.xyxy, det_sf_processed[0].boxes.conf[:, None]], dim=1)
+                    loss_con = 1 - compute_iou(boxes_cw, boxes_sf)  # Maximize IoU
                 else:
                     loss_con = 0
-
-                # try:
-                #     pred_cw_tensor = torch.stack(det_cw, dim=0)
-                #     pred_sf_tensor = torch.stack(det_sf, dim=0)
-                # except:
-                #     print("Predictions from CW or SF have inconsistent shapes. Skipping consistency loss this step.")
-                #     loss_con = 0
-                # else:
-                #     loss_con = consistency_loss_fn(pred_cw_tensor, pred_sf_tensor)
 
                 cw_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 sf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
