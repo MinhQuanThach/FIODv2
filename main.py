@@ -16,10 +16,10 @@ from ultralytics import YOLO
 from model.fogpassfilter import FogPassFilter_conv1, FogPassFilter_res1, FogPassFilterLoss
 from dataset.paired_cityscapes import PairedCityscapes
 from dataset.foggy_zurich import FoggyZurich
-from test import test_model, save_model, convert_labels_to_ultralytics_format, check_fresh_wrapper
+from test import test_model, convert_labels_to_ultralytics_format
 from utils.train_config import get_arguments
 from utils.optimisers import get_optimisers, get_lr_schedulers
-from context import model, yolo, args
+from plot import plot_cw_sf_layer
 import wandb
 
 
@@ -74,6 +74,20 @@ def compute_iou(boxes1, boxes2, K=300):
     return matched_iou.mean()
 
 def main():
+    args = get_arguments()
+
+    yolo = YOLO("yolov8s.pt")
+    yolo.to(args.gpu)
+    yolo.model.args = SimpleNamespace(box=0.05, cls=0.5, dfl=1.5)
+
+    # Initialize model
+    model = YOLO('yolov8s.pt').model
+
+    # load weights (strict=True will raise if any shape mismatches)
+    model.load_state_dict(torch.load('cityscapes_finetuned.pth'), strict=True)
+    model.train()
+    model.to(args.gpu)
+
     # Set random seeds for reproducibility
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
@@ -91,22 +105,31 @@ def main():
     cudnn.enabled = True
 
     # Initialize fog-pass filters (adjust input sizes based on YOLOv8n backbone)
-    FogPassFilter1 = FogPassFilter_conv1(528)
-    FogPassFilter2 = FogPassFilter_res1(2080)
+    FogPassFilter1 = FogPassFilter_conv1(2080)
+    FogPassFilter2 = FogPassFilter_res1(8256)
     FogPassFilter1_optimizer = torch.optim.Adam(FogPassFilter1.parameters(), lr=1e-4)
     FogPassFilter2_optimizer = torch.optim.Adam(FogPassFilter2.parameters(), lr=1e-4)
     FogPassFilter1.to(args.gpu)
     FogPassFilter2.to(args.gpu)
     fogpassfilter_loss = FogPassFilterLoss(margin=0.1)
 
+    all_factors = {
+        'layer0': {'CW': [], 'SF': [], 'RF': []},
+        'layer1': {'CW': [], 'SF': [], 'RF': []}
+    }
+
     # Data loaders
-    cwsf_dataset = PairedCityscapes(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size, img_size=args.img_size)
+    cwsf_dataset = PairedCityscapes(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size,
+                                    img_size=args.img_size)
     cwsf_loader = data.DataLoader(
-        cwsf_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=cwsf_dataset.collate_fn
+        cwsf_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True,
+        collate_fn=cwsf_dataset.collate_fn
     )
-    rf_dataset = FoggyZurich(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size, img_size=args.img_size)
+    rf_dataset = FoggyZurich(args.data_dir, set=args.set, max_iters=args.num_steps * args.batch_size,
+                             img_size=args.img_size)
     rf_loader = data.DataLoader(
-        rf_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=rf_dataset.collate_fn
+        rf_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True,
+        collate_fn=rf_dataset.collate_fn
     )
     cwsf_loader_iter = iter(cwsf_loader)
     rf_loader_iter = iter(rf_loader)
@@ -124,6 +147,7 @@ def main():
     def hook_fn(layer_idx):
         def hook(module, input, output):
             features[layer_idx].append(output.detach())
+
         return hook
 
     for layer_idx in feature_layers:
@@ -131,7 +155,7 @@ def main():
         handles.append(handle)
 
     # Training loop
-    for i_iter in tqdm(range(args.num_steps)):
+    for i_iter in tqdm(range(5000)):
         loss_det_cw_value = 0
         loss_det_sf_value = 0
         loss_fsm_value = 0
@@ -158,7 +182,7 @@ def main():
             if batch_cwsf is None:
                 cwsf_loader_iter = iter(cwsf_loader)
                 batch_cwsf = next(cwsf_loader_iter)
-            cw_img, sf_img, cw_label, sf_label, _, cw_domains, sf_domains= batch_cwsf
+            cw_img, sf_img, cw_label, sf_label, _, cw_domains, sf_domains = batch_cwsf
             cw_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in cw_label]
             sf_label = [{k: v.to(args.gpu) for k, v in label.items()} for label in sf_label]
 
@@ -173,7 +197,7 @@ def main():
                                       Variable(rf_img).to(args.gpu))
 
             # Map domains to IDs
-            domain_map = {'SF': 0, 'CW': 1, 'RF': 2}
+            domain_map = {'CW': 0, 'SF': 1, 'RF': 2}
             all_domains = cw_domains + sf_domains + rf_domains
 
             # Forward passes
@@ -224,10 +248,27 @@ def main():
                     fog_factor_cw[batch_idx] = fogpassfilter(vector_cw_gram)
                     fog_factor_rf[batch_idx] = fogpassfilter(vector_rf_gram)
 
-                fog_factor_embeddings = torch.cat([torch.unsqueeze(f, 0) for tri in zip(fog_factor_sf, fog_factor_cw, fog_factor_rf) for f in tri], 0)
-                fog_factor_embeddings_norm = torch.norm(fog_factor_embeddings, p=2, dim=1).detach()
-                fog_factor_embeddings = fog_factor_embeddings.div(fog_factor_embeddings_norm.unsqueeze(1))
-                fog_factor_labels = torch.LongTensor([domain_map[d] for d in all_domains]).to(args.gpu)
+                    # For plotting
+                    # safe squeeze -> ensure shape (D,)
+                    emb_cw = fog_factor_cw[batch_idx].detach().cpu().squeeze()
+                    emb_sf = fog_factor_sf[batch_idx].detach().cpu().squeeze()
+                    emb_rf = fog_factor_rf[batch_idx].detach().cpu().squeeze()
+                    # choose layer key string consistent with your cw_features keys: 'layer0' or 'layer1'
+                    layer_key = 'layer0' if idx == 0 else 'layer1'
+                    all_factors[layer_key]['CW'].append(emb_cw.numpy())
+                    all_factors[layer_key]['SF'].append(emb_sf.numpy())
+                    all_factors[layer_key]['RF'].append(emb_rf.numpy())
+
+                emb_cw = torch.stack([e.squeeze(0) if e.dim() == 2 else e for e in fog_factor_cw], dim=0).to(args.gpu)  # (B, D)
+                emb_sf = torch.stack([e.squeeze(0) if e.dim() == 2 else e for e in fog_factor_sf], dim=0).to(args.gpu)  # (B, D)
+                emb_rf = torch.stack([e.squeeze(0) if e.dim() == 2 else e for e in fog_factor_rf], dim=0).to(args.gpu)  # (B, D)
+
+                fog_factor_embeddings = torch.cat([emb_cw, emb_sf, emb_rf], dim=0)  # (2B, D)
+
+                B = emb_cw.size(0)
+                fog_factor_labels = torch.LongTensor([0] * B + [1] * B + [2] * B).to(args.gpu)
+
+                # Compute loss
                 fog_pass_filter_loss = fogpassfilter_loss(fog_factor_embeddings, fog_factor_labels)
                 total_fpf_loss += fog_pass_filter_loss
 
@@ -249,25 +290,20 @@ def main():
             if i_iter % 3 == 0: # CW & SF
                 det_cw = model(cw_img)
                 det_sf = model(sf_img)
-                if all(label['boxes'].numel() > 0 for label in cw_label):
-                    batch_cw = convert_labels_to_ultralytics_format(cw_label)
-                    loss_components, _ = yolo.loss(batch_cw, det_cw)
-                    loss_det_cw = loss_components.sum()
-                else:
-                    loss_det_cw = 0
 
-                if all(label['boxes'].numel() > 0 for label in sf_label):
-                    batch_sf = convert_labels_to_ultralytics_format(sf_label)
-                    loss_components, _ = yolo.loss(batch_sf, det_sf)
-                    loss_det_sf = loss_components.sum()
-                else:
-                    loss_det_sf = 0
+                batch_cw = convert_labels_to_ultralytics_format(cw_label)
+                loss_components, _ = yolo.loss(batch_cw, det_cw)
+                loss_det_cw = loss_components.sum()
+
+                batch_sf = convert_labels_to_ultralytics_format(sf_label)
+                loss_components, _ = yolo.loss(batch_sf, det_sf)
+                loss_det_sf = loss_components.sum()
 
                 det_cw_processed = yolo(cw_img)
                 det_sf_processed = yolo(sf_img)
                 # Consistency loss with matched IoU
                 if det_cw[0].numel() > 0 and det_sf[0].numel() > 0:
-                    boxes_cw = torch.cat([det_cw_processed[0].boxes.xyxy, det_cw_processed[0].boxes.conf[:, None]], dim=1) # shape [N, 5] = [x1, y1, x2, y2, conf]
+                    boxes_cw = torch.cat([det_cw_processed[0].boxes.xyxy, det_cw_processed[0].boxes.conf[:, None]], dim=1)
                     boxes_sf = torch.cat([det_sf_processed[0].boxes.xyxy, det_sf_processed[0].boxes.conf[:, None]], dim=1)
                     loss_con = 1 - compute_iou(boxes_cw, boxes_sf)  # Maximize IoU
                 else:
@@ -277,29 +313,25 @@ def main():
                 sf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = cw_features, sf_features
 
-            if i_iter % 3 == 1: # SF & RF
+            if i_iter % 3 == 1:  # SF & RF
                 det_sf = model(sf_img)
                 det_rf = model(rf_img)
-                if all(label['boxes'].numel() > 0 for label in sf_label):
-                    batch_sf = convert_labels_to_ultralytics_format(sf_label)
-                    loss_components, _ = yolo.loss(batch_sf, det_sf)
-                    loss_det_sf = loss_components.sum()
-                else:
-                    loss_det_sf = 0
+
+                batch_sf = convert_labels_to_ultralytics_format(sf_label)
+                loss_components, _ = yolo.loss(batch_sf, det_sf)
+                loss_det_sf = loss_components.sum()
 
                 sf_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
                 a_features, b_features = rf_features, sf_features
 
-            if i_iter % 3 == 2: # CW & RF
+            if i_iter % 3 == 2:  # CW & RF
                 det_cw = model(cw_img)
                 det_rf = model(rf_img)
-                if all(label['boxes'].numel() > 0 for label in cw_label):
-                    batch_cw = convert_labels_to_ultralytics_format(cw_label)
-                    loss_components, _ = yolo.loss(batch_cw, det_cw)
-                    loss_det_cw = loss_components.sum()
-                else:
-                    loss_det_cw = 0
+
+                batch_cw = convert_labels_to_ultralytics_format(cw_label)
+                loss_components, _ = yolo.loss(batch_cw, det_cw)
+                loss_det_cw = loss_components.sum()
 
                 cw_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
@@ -366,18 +398,21 @@ def main():
                 "total_loss": loss
             }, step=i_iter)
 
-        if i_iter % 100 == 0 and i_iter > 0:
+        if i_iter % 500 == 0 and i_iter > 0:
             metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
             print(f"Iter {i_iter} Metrics:", metrics)
 
+        if i_iter % 1000 == 999:
+            plot_cw_sf_layer(all_factors, layer_key='layer0', out_file='layer0.png')
+            plot_cw_sf_layer(all_factors, layer_key='layer1', out_file='layer1.png')
+            all_factors = {
+                'layer0': {'CW': [], 'SF': [], 'RF': []},
+                'layer1': {'CW': [], 'SF': [], 'RF': []}
+            }
+
     # Final test and plot
-    save_model(args, model, FogPassFilter1, FogPassFilter2, run_name, args.num_steps)
-    print("Model saved")
     metrics = test_model(args, model, yolo, FogPassFilter1, FogPassFilter2)
     print("Final Metrics:", metrics)
-
-    print("CHECK FRESH WRAPPER:")
-    check_fresh_wrapper(model, args)
 
     # Cleanup hooks
     for handle in handles:

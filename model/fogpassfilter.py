@@ -64,3 +64,47 @@ class FogPassFilterLoss(nn.Module):
 
         # Return mean over all valid pairs
         return total_loss.sum() / (mask.sum() + 1e-8)
+
+class PairedFogPassFilterLoss(nn.Module):
+    """
+    Loss for CW-SF matching pairs only.
+    Two variants:
+      - 'mse'   : L = mean ||emb_cw - emb_sf||^2
+      - 'cos'   : L = mean (1 - cos_sim)^2  (cosine-distance squared)
+    emb_cw / emb_sf should be shape (B, D).
+    """
+    def __init__(self, variant='mse', normalize=True):
+        """
+        variant: 'mse' or 'cos'
+        normalize: whether to L2-normalize embeddings before computing loss
+        """
+        super().__init__()
+        assert variant in ('mse', 'cos')
+        self.variant = variant
+        self.normalize = normalize
+
+    def forward(self, emb_cw, emb_sf):
+        """
+        emb_cw, emb_sf: tensors (B, D)
+        returns scalar loss
+        """
+        # shapes check
+        if emb_cw.dim() != 2 or emb_sf.dim() != 2:
+            raise ValueError("emb_cw / emb_sf must be (B, D)")
+        if emb_cw.size(0) != emb_sf.size(0):
+            raise ValueError("CW and SF must have same batch size and be aligned (cw_i matches sf_i).")
+
+        if self.normalize:
+            emb_cw = F.normalize(emb_cw, p=2, dim=1)
+            emb_sf = F.normalize(emb_sf, p=2, dim=1)
+
+        if self.variant == 'mse':
+            # squared L2 per-pair, averaged
+            per_pair = (emb_cw - emb_sf).pow(2).sum(dim=1)   # (B,)
+            loss = per_pair.mean()
+            return loss
+        else:  # 'cos'
+            cos = (emb_cw * emb_sf).sum(dim=1)              # cosine similarity per pair
+            dist = 0.1 - cos                                # cosine distance
+            loss = (dist.pow(2)).mean()
+            return loss
