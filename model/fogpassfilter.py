@@ -7,7 +7,7 @@ class FogPassFilter_conv1(nn.Module):
 
         self.hidden = nn.Linear(inputsize, inputsize//2)
         self.hidden2 = nn.Linear(inputsize//2, inputsize//4)
-        self.output = nn.Linear(inputsize//4, 64)
+        self.output = nn.Linear(inputsize//4, 16)
         self.leakyrelu = nn.LeakyReLU()
 
     def forward(self, x):
@@ -24,7 +24,7 @@ class FogPassFilter_res1(nn.Module):
         super(FogPassFilter_res1, self).__init__()
 
         self.hidden = nn.Linear(inputsize, inputsize//8)
-        self.output = nn.Linear(inputsize//8, 64)
+        self.output = nn.Linear(inputsize//8, 8)
         self.leakyrelu = nn.LeakyReLU()
 
     def forward(self, x):
