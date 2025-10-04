@@ -293,11 +293,11 @@ def main():
 
                 batch_cw = convert_labels_to_ultralytics_format(cw_label)
                 loss_components, _ = yolo.loss(batch_cw, det_cw)
-                loss_det_cw = loss_components.sum()
+                loss_det_cw = loss_components.sum() / 10
 
                 batch_sf = convert_labels_to_ultralytics_format(sf_label)
                 loss_components, _ = yolo.loss(batch_sf, det_sf)
-                loss_det_sf = loss_components.sum()
+                loss_det_sf = loss_components.sum() / 10
 
                 det_cw_processed = yolo(cw_img)
                 det_sf_processed = yolo(sf_img)
@@ -319,7 +319,7 @@ def main():
 
                 batch_sf = convert_labels_to_ultralytics_format(sf_label)
                 loss_components, _ = yolo.loss(batch_sf, det_sf)
-                loss_det_sf = loss_components.sum()
+                loss_det_sf = loss_components.sum() / 10
 
                 sf_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}
@@ -331,7 +331,7 @@ def main():
 
                 batch_cw = convert_labels_to_ultralytics_format(cw_label)
                 loss_components, _ = yolo.loss(batch_cw, det_cw)
-                loss_det_cw = loss_components.sum()
+                loss_det_cw = loss_components.sum() / 10
 
                 cw_features = {'layer0': features[2][0], 'layer1': features[4][0]}
                 rf_features = {'layer0': features[2][1], 'layer1': features[4][1]}

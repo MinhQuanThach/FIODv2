@@ -12,8 +12,8 @@ def get_arguments():
     args.random_seed = 1234
     args.snapshot_dir = '/content/drive/MyDrive/FIOD_dataset/snapshots'
     args.set = 'train'
-    args.lambda_fsm = 1  # Fog style matching weight
-    args.lambda_con = 1e-4  # Consistency loss weight
+    args.lambda_fsm = 10  # Fog style matching weight
+    args.lambda_con = 1  # Consistency loss weight
     args.file_name = 'yolov8n_fifo'
     args.gpu = 0
     return args
